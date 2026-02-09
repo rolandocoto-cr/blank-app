@@ -2,6 +2,8 @@ import requests
 import streamlit as st
 import threading
 
+st.set_page_config(page_title="Cook Islands Māori ASR")
+
 ASR_URL = "https://asr-service-790340752928.us-central1.run.app/transcribe"
 
 # ── Sidebar navigation ──────────────────────────────────────────────────────
@@ -10,8 +12,12 @@ page = st.sidebar.radio("Navigate", ["🎙️ Transcribe", "ℹ️ About"])
 
 # ── About page ───────────────────────────────────────────────────────────────
 if page == "ℹ️ About":
-    st.title("About")
-    st.write("This project was done by Ake.")
+    st.title("About the Project")
+    st.markdown("This page uses an [Wav2Vec2-XLSR](https://huggingface.co/docs/transformers/en/model_doc/xlsr_wav2vec2) model that transforms an audio recording in Cook Islands Māori into a text transcription of the words in the recording.")
+    st.markdown("The model was developed by Rolando Coto-Solano, Sally Akevai Nicholas, and students from Dartmouth College. You can read more about the project here: [Development of Automatic Speech Recognition for the Documentation of Cook Islands Māori](https://aclanthology.org/2022.lrec-1.412).")
+    st.write("This is part of a larger project by Sally Akevai Nicholas to document the Cook Islands Māori language.")
+    #st.button("← Back to TTS", on_click=go_to_main)
+
 
 # ── Transcribe page ─────────────────────────────────────────────────────────
 else:
