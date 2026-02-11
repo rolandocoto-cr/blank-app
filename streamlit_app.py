@@ -1,9 +1,10 @@
 import requests
 import streamlit as st
 import threading
+import base64
 from streamlit_option_menu import option_menu
 
-st.set_page_config(page_title="Cook Islands Māori NLP")
+st.set_page_config(page_title="Cook Islands Māori NLP", initial_sidebar_state="collapsed")
 
 # ── Initialize TTS session state ─────────────────────────────────────────────
 if 'processing' not in st.session_state:
@@ -16,6 +17,20 @@ if 'user_text' not in st.session_state:
     st.session_state.user_text = "Kia orana kōtou kātoatoa"
 if 'input_key' not in st.session_state:
     st.session_state.input_key = 0
+
+# ── Initialize Parsing session state ─────────────────────────────────────────
+if 'parse_processing' not in st.session_state:
+    st.session_state.parse_processing = False
+if 'parse_png' not in st.session_state:
+    st.session_state.parse_png = None
+if 'parse_conllu' not in st.session_state:
+    st.session_state.parse_conllu = None
+if 'parse_error' not in st.session_state:
+    st.session_state.parse_error = None
+if 'parse_text' not in st.session_state:
+    st.session_state.parse_text = "E moe ana te kiorengiao"
+if 'parse_input_key' not in st.session_state:
+    st.session_state.parse_input_key = 0
 
 # ── Top navigation menu ─────────────────────────────────────────────────────
 page = option_menu(
@@ -104,7 +119,6 @@ elif page == "Transcription":
 elif page == "Voice Generation":
     st.title("🔊 Cook Islands Māori TTS")
 
-    # Callbacks for special character buttons
     def add_char(char):
         st.session_state.user_text = st.session_state.user_text + char
         st.session_state.input_key += 1
@@ -112,7 +126,6 @@ elif page == "Voice Generation":
     def on_text_change():
         st.session_state.user_text = st.session_state[f"text_input_{st.session_state.input_key}"]
 
-    # Text input with dynamic key
     st.text_input(
         "Enter your text:",
         value=st.session_state.user_text,
@@ -120,7 +133,6 @@ elif page == "Voice Generation":
         on_change=on_text_change
     )
 
-    # Special character buttons
     st.caption("Insert special characters:")
     special_chars = ['ā', 'ē', 'ī', 'ō', 'ū', 'ꞌ']
     cols = st.columns(len(special_chars))
@@ -131,7 +143,6 @@ elif page == "Voice Generation":
 
     st.write("")
 
-    # Generate button
     button_text = "Please wait..." if st.session_state.processing else "Generate audio"
     button_clicked = st.button(button_text, disabled=st.session_state.processing)
 
@@ -144,13 +155,11 @@ elif page == "Voice Generation":
     if st.session_state.processing:
         try:
             api_url = st.secrets["TTS_URL"]
-
             response = requests.post(
                 api_url,
                 json={"text": st.session_state.user_text},
                 timeout=60
             )
-
             if response.ok:
                 st.session_state.audio_bytes = response.content
             else:
@@ -168,7 +177,6 @@ elif page == "Voice Generation":
             st.session_state.processing = False
             st.rerun()
 
-    # Display results
     if st.session_state.audio_bytes:
         st.success("Audio generated!")
         st.audio(st.session_state.audio_bytes, format='audio/wav')
@@ -184,8 +192,94 @@ elif page == "Voice Generation":
 
 # ── Parsing page ─────────────────────────────────────────────────────────────
 elif page == "Parsing":
-    st.title("📄 Parsing")
-    st.write("This feature is coming soon.")
+    st.title("📄 Cook Islands Māori Parser")
+    st.write("Enter a sentence in Cook Islands Māori and get a dependency parse tree.")
+
+    # Callbacks for special character buttons
+    def add_parse_char(char):
+        st.session_state.parse_text = st.session_state.parse_text + char
+        st.session_state.parse_input_key += 1
+
+    def on_parse_text_change():
+        st.session_state.parse_text = st.session_state[f"parse_input_{st.session_state.parse_input_key}"]
+
+    # Text input
+    st.text_input(
+        "Enter your sentence:",
+        value=st.session_state.parse_text,
+        key=f"parse_input_{st.session_state.parse_input_key}",
+        on_change=on_parse_text_change
+    )
+
+    # Special character buttons
+    st.caption("Insert special characters:")
+    special_chars = ['ā', 'ē', 'ī', 'ō', 'ū', 'ꞌ']
+    cols = st.columns(len(special_chars))
+    for idx, char in enumerate(special_chars):
+        with cols[idx]:
+            st.button(char, key=f"btn_parse_char_{idx}", use_container_width=True,
+                      on_click=add_parse_char, args=(char,))
+
+    st.write("")
+
+    # Parse button
+    parse_button_text = "Please wait..." if st.session_state.parse_processing else "Parse sentence"
+    parse_clicked = st.button(parse_button_text, disabled=st.session_state.parse_processing)
+
+    if parse_clicked:
+        st.session_state.parse_png = None
+        st.session_state.parse_conllu = None
+        st.session_state.parse_error = None
+        st.session_state.parse_processing = True
+        st.rerun()
+
+    if st.session_state.parse_processing:
+        try:
+            parse_url = st.secrets["PARSE_URL"]
+            response = requests.post(
+                parse_url,
+                json={"text": st.session_state.parse_text},
+                timeout=120
+            )
+            if response.ok:
+                data = response.json()
+                st.session_state.parse_conllu = data.get("conllu", "")
+                png_b64 = data.get("png", "")
+                if png_b64:
+                    st.session_state.parse_png = base64.b64decode(png_b64)
+            else:
+                try:
+                    err = response.json().get("error", response.text)
+                except Exception:
+                    err = response.text
+                st.session_state.parse_error = f"HTTP Error {response.status_code}: {err}"
+        except requests.exceptions.ConnectionError as e:
+            st.session_state.parse_error = f"Connection error: {e}"
+        except requests.exceptions.Timeout as e:
+            st.session_state.parse_error = f"Request timed out: {e}"
+        except Exception as e:
+            st.session_state.parse_error = f"Unexpected error: {type(e).__name__}: {e}"
+        finally:
+            st.session_state.parse_processing = False
+            st.rerun()
+
+    # Display results
+    if st.session_state.parse_png:
+        st.success("Parse complete!")
+        st.image(st.session_state.parse_png, caption="Dependency Parse Tree", use_container_width=True)
+
+    if st.session_state.parse_conllu:
+        st.download_button(
+            label="Download CoNLL-U parse",
+            data=st.session_state.parse_conllu,
+            file_name="parse.conllu",
+            mime="text/plain"
+        )
+        with st.expander("View CoNLL-U text"):
+            st.code(st.session_state.parse_conllu, language=None)
+
+    if st.session_state.parse_error:
+        st.error(st.session_state.parse_error)
 
 # ── Spell Checking page ─────────────────────────────────────────────────────
 elif page == "Spell Checking":
@@ -204,4 +298,5 @@ elif page == "About":
     st.markdown("The model was developed by Rolando Coto-Solano, Sally Akevai Nicholas, and students from Dartmouth College. You can read more about the project here: [Development of Automatic Speech Recognition for the Documentation of Cook Islands Māori](https://aclanthology.org/2022.lrec-1.412).")
     st.markdown("The text-to-speech (voice generation) uses a [FastSpeech2](https://arxiv.org/abs/2006.04558) model that transforms text in Cook Islands Māori into a synthetically generated voice recording.")
     st.markdown("The model was developed by Jesyn James, Sally Akevai Nicholas, Rolando Coto-Solano, and students from University of Auckland. You can read more about the project here: [Development of Community-Oriented Text-to-Speech Models for Māori ꞌAvaiki Nui (Cook Islands Māori)](https://aclanthology.org/2024.lrec-main.432/)")
+    st.markdown("The dependency parser uses [UDPipe 2](https://ufal.mff.cuni.cz/udpipe/2) to produce Universal Dependencies parses of Cook Islands Māori sentences.")
     st.write("This is part of a larger project by Sally Akevai Nicholas to document the Cook Islands Māori language.")
