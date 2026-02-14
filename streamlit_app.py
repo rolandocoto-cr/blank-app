@@ -59,12 +59,12 @@ if page == "Home":
 # ── Transcription page ──────────────────────────────────────────────────────
 elif page == "Transcription":
     st.title("🎙️ Cook Islands Māori Speech Recognition")
-    st.write("Upload an audio file or record directly in your browser. "
+    st.write("Upload an audio file, share a Google Drive link, or record directly in your browser. "
              "You'll receive the transcription by email.")
 
     email = st.text_input("Your email address")
 
-    tab_upload, tab_record = st.tabs(["📁 Upload a file", "🎤 Record audio"])
+    tab_upload, tab_gdrive, tab_record = st.tabs(["📁 Upload a file", "🔗 Google Drive link", "🎤 Record audio"])
 
     def submit_audio(file_name: str, file_content: bytes, user_email: str):
         def send_request():
@@ -81,7 +81,25 @@ elif page == "Transcription":
         thread = threading.Thread(target=send_request, daemon=True)
         thread.start()
 
+    def submit_gdrive(gdrive_url: str, user_email: str):
+        def send_request():
+            try:
+                requests.post(
+                    st.secrets["ASR_URL"],
+                    json={
+                        "gdrive_url": gdrive_url,
+                        "email": user_email,
+                    },
+                    timeout=3600,
+                )
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=send_request, daemon=True)
+        thread.start()
+
     with tab_upload:
+        st.info("⚠️ Maximum file size: **10 MB**. For larger files, use the **Google Drive link** tab.")
         uploaded = st.file_uploader("Choose an audio file", type=["wav"])
 
         if st.button("Transcribe uploaded file", key="btn_upload"):
@@ -94,6 +112,32 @@ elif page == "Transcription":
                 submit_audio(uploaded.name, file_content, email)
                 st.success(
                     "✅ Your file has been submitted! You will receive an email "
+                    "when processing begins, and another when your transcription "
+                    "is ready."
+                )
+
+    with tab_gdrive:
+        st.write("Share your audio file via Google Drive. Make sure the file is set to "
+                 "**\"Anyone with the link can view\"**.")
+        st.markdown(
+            "**How to get a shareable link:**\n"
+            "1. Right-click your file in Google Drive\n"
+            "2. Click **Share** → **General access** → **Anyone with the link**\n"
+            "3. Copy the link and paste it below"
+        )
+        gdrive_link = st.text_input("Google Drive link", placeholder="https://drive.google.com/file/d/...")
+
+        if st.button("Transcribe from Google Drive", key="btn_gdrive"):
+            if not email:
+                st.error("Please enter your email address.")
+            elif not gdrive_link:
+                st.error("Please enter a Google Drive link.")
+            elif "drive.google.com" not in gdrive_link and "docs.google.com" not in gdrive_link:
+                st.error("Please enter a valid Google Drive link.")
+            else:
+                submit_gdrive(gdrive_link, email)
+                st.success(
+                    "✅ Your Google Drive link has been submitted! You will receive an email "
                     "when processing begins, and another when your transcription "
                     "is ready."
                 )
@@ -195,7 +239,6 @@ elif page == "Parsing":
     st.title("📄 Cook Islands Māori Parser")
     st.write("Enter a sentence in Cook Islands Māori and get a dependency parse tree.")
 
-    # Callbacks for special character buttons
     def add_parse_char(char):
         st.session_state.parse_text = st.session_state.parse_text + char
         st.session_state.parse_input_key += 1
@@ -203,7 +246,6 @@ elif page == "Parsing":
     def on_parse_text_change():
         st.session_state.parse_text = st.session_state[f"parse_input_{st.session_state.parse_input_key}"]
 
-    # Text input
     st.text_input(
         "Enter your sentence:",
         value=st.session_state.parse_text,
@@ -211,7 +253,6 @@ elif page == "Parsing":
         on_change=on_parse_text_change
     )
 
-    # Special character buttons
     st.caption("Insert special characters:")
     special_chars = ['ā', 'ē', 'ī', 'ō', 'ū', 'ꞌ']
     cols = st.columns(len(special_chars))
@@ -222,7 +263,6 @@ elif page == "Parsing":
 
     st.write("")
 
-    # Parse button
     parse_button_text = "Please wait..." if st.session_state.parse_processing else "Parse sentence"
     parse_clicked = st.button(parse_button_text, disabled=st.session_state.parse_processing)
 
@@ -263,7 +303,6 @@ elif page == "Parsing":
             st.session_state.parse_processing = False
             st.rerun()
 
-    # Display results
     if st.session_state.parse_png:
         st.success("Parse complete!")
         st.image(st.session_state.parse_png, caption="Dependency Parse Tree", use_container_width=True)
